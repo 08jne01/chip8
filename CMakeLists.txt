@@ -11,5 +11,8 @@ find_package(SDL2_ttf REQUIRED)
 include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_TTF_INCLUDE_DIRS} "deps")
 
 set(DEPS "${CMAKE_CURRENT_LIST_DIR}/deps")
+
+set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
 # Include sub-projects.
 add_subdirectory ("src")

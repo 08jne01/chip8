@@ -1,0 +1,5 @@
+out/*
+deps_build/*
+release/*
+roms/*
+.vs/*

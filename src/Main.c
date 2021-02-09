@@ -1,4 +1,5 @@
-﻿#include <stdlib.h>
+﻿#define SDL_MAIN_HANDLED
+#include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <memory.h>
@@ -8,6 +9,7 @@
 #include "SDL_FontCache/SDL_FontCache.h"
 
 #include "Chip8.h"
+
 
 enum
 {
@@ -98,13 +100,19 @@ static uint16_t s_skipCall = 0;
 static int s_currentCommand = 0;
 static char commandBuffer[COMMAND_HISTORY][20];
 
+#ifdef IS_WINDOWS
+#include <Windows.h>
+
+static int main( int argc, const char** argv );
+
+int WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, char* str, int nShowCmd )
+{
+	return main( __argc, __argv );
+}
+#endif
+
 int main(int argc, const char** argv)
 {
-	for ( int i = 0; i < COMMAND_HISTORY; i++ )
-	{
-		memset( commandBuffer[i], 0, COMMAND_LEN );
-	}
-	
 	int clocks = 1;
 	int instructionsPerFrame = 6;
 	const char* filename = NULL;
@@ -123,12 +131,14 @@ int main(int argc, const char** argv)
 		{
 			char buffer[50];
 			strcpy( buffer, argv[i] );
-			strtok( buffer, "=" );
-			char* value = strtok( NULL, buffer );
-
-			if ( ! sscanf( value, "%x", &instructionsPerFrame ) )
+			char* value = strtok( buffer, "=" );
+			if ( value )
 			{
-				instructionsPerFrame = 6;
+				value = strtok( NULL, buffer );
+				if ( value && ! sscanf( value, "%x", &instructionsPerFrame ) )
+				{
+					instructionsPerFrame = 6;
+				}
 			}
 		}
 		else
@@ -146,8 +156,6 @@ int main(int argc, const char** argv)
 		return 1;
 	}
 
-
-
 	int width = SCREEN_WIDTH;
 	int height = SCREEN_HEIGHT;
 
@@ -160,12 +168,16 @@ int main(int argc, const char** argv)
 
 	chip8_t* machine = createMachine();
 
-	memset( machine->memory + 0xF00, 0x0, 256 );
-
 	chip8_t* prevMachine = NULL;
 	if ( s_debug )
 	{
 		prevMachine = createMachine();
+
+		//Initialise the command buffer to zero.
+		for ( int i = 0; i < COMMAND_HISTORY; i++ )
+		{
+			memset( commandBuffer[i], 0, COMMAND_LEN );
+		}
 	}
 
 	loadRom( machine, filename );
@@ -178,8 +190,6 @@ int main(int argc, const char** argv)
 		height,
 		SDL_WINDOW_SHOWN
 	);
-
-	
 
 	if ( ! window )
 	{

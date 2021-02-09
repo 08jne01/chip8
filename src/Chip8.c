@@ -96,8 +96,6 @@ static void OPD_TXT( uint16_t opcode, char* str );
 static void OPE_TXT( uint16_t opcode, char* str );
 static void OPF_TXT( uint16_t opcode, char* str );
 
-static void waitKey( chip8_t* machine, int key );
-
 static INSTRUCTION s_instructions[16] = {
 	OP0,OP1,OP2,OP3,OP4,OP5,OP6,OP7,
 	OP8,OP9,OPA,OPB,OPC,OPD,OPE,OPF
