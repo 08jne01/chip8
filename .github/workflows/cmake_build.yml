@@ -29,7 +29,7 @@ jobs:
       run: |
        mkdir Libs
        cd Libs
-       curl -L https://drive.google.com/u/0/uc?id=1jJaQGUMdAudw39lPUPZE488Mu3bbBQRE&export=download
+       curl -o Lib.zip -L https://drive.google.com/u/0/uc?id=1jJaQGUMdAudw39lPUPZE488Mu3bbBQRE&export
        unzip Libs.zip
        cd ..
     - name: Configure CMake
