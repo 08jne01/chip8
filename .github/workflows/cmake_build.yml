@@ -25,13 +25,13 @@ jobs:
     - name: Get dependancies
       shell: bash
       run: |
-       mkdir ${{github.workspace}}/Libs
+       mkdir $GITHUB_WORKSPACE/Libs
        cd Libs
        curl https://drive.google.com/file/d/1jJaQGUMdAudw39lPUPZE488Mu3bbBQRE/view?usp=sharing -o Libs.zip
        unzip Libs.zip
        cd ..
-       echo ::set-env name=SDL2_DIR::$(echo ${{github.workspace}}/Libs/SDL2-2.0.12)
-       echo ::set-env name=SDL2_ttf_DIR::$(echo ${{github.workspace}}/Libs/SDL2_ttf_DIR)
+       echo ::set-env name=SDL2_DIR::$(echo $GITHUB_WORKSPACE/Libs/SDL2-2.0.12)
+       echo ::set-env name=SDL2_ttf_DIR::$(echo $GITHUB_WORKSPACE/Libs/SDL2_ttf_DIR)
     - name: Configure CMake
       run: cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE
 
