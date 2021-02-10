@@ -27,7 +27,7 @@ jobs:
     - name: Get dependancies
       shell: bash
       run: |
-       mkdir ${{github.workspace}}/Libs
+       mkdir Libs
        cd Libs
        curl https://drive.google.com/file/d/1jJaQGUMdAudw39lPUPZE488Mu3bbBQRE/view?usp=sharing -o Libs.zip
        unzip Libs.zip
