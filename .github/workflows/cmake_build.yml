@@ -22,10 +22,10 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Configure CMake
-      run: cmake build -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+      run: cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE
 
     - name: Build
-      working-directory: ${github.workspace}/build
+      working-directory: ${github.workspace}
       shell: cmd
       # Execute the build.  You can specify a specific target with "--target <NAME>"
       run: cmake --config $BUILD_TYPE
