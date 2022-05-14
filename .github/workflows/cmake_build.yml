@@ -1,0 +1,42 @@
+name: CMake
+
+on: 
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+  BUILD_TYPE: Release
+  ACTIONS_ALLOW_UNSECURE_COMMANDS: 'true'
+  SDL2_DIR: SDL2-2.0.12
+  SDL2_ttf_DIR: SDL2_ttf-2.0.15
+
+jobs:
+  build:
+    # The CMake configure and build commands are platform agnostic and should work equally
+    # well on Windows or Mac.  You can convert this to a matrix build if you need
+    # cross-platform coverage.
+    # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v2
+  
+    - name: Get dependancies
+      shell: bash
+      run: |
+       mkdir Libs
+       cd Libs
+       curl -o Libs.zip -L https://drive.google.com/u/0/uc?id=1jJaQGUMdAudw39lPUPZE488Mu3bbBQRE&export
+       unzip Libs.zip
+       cd ..
+    - name: Configure CMake
+      run: cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+
+    - name: Build
+      working-directory: ${github.workspace}
+      shell: cmd
+      # Execute the build.  You can specify a specific target with "--target <NAME>"
+      run: cmake --config $BUILD_TYPE
