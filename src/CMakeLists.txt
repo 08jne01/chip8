@@ -3,7 +3,7 @@
 #
 cmake_minimum_required (VERSION 3.8)
 # Add source to this project's executable.
-add_executable (c8 "Main.c"  "Chip8.c" "Chip8.h" "${DEPS}/SDL_FontCache/SDL_FontCache.c"  )
+add_executable (c8 "Main.c"  "Chip8.c" "Chip8.h" "${DEPS}/SDL_FontCache/SDL_FontCache.c" "Chip8_Macros.h" "Disassemble.c" "Diassemble.h")
 
 set(COPY_COMMAND "cp -r")
 
@@ -11,14 +11,16 @@ if ("${CMAKE_C_COMPILER_ID}" STREQUAL "MSVC")
 	target_sources(c8 PRIVATE "c8.rc")
 
 	#Nobody got time for _s functions.
-	add_definitions(-DIS_WINDOWS -D_CRT_SECURE_NO_WARNINGS)
+	
 	set(COPY_COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/cp.bat")
 
 	#build without console
-	target_link_options(c8 PRIVATE "/SUBSYSTEM:WINDOWS")
+	#add_definitions(-DIS_WINDOWS -D_CRT_SECURE_NO_WARNINGS)
+	#target_link_options(c8 PRIVATE "/SUBSYSTEM:WINDOWS")
+
 	#Sign exe after build on windows.
 	set(SIGNSTR "Open Source Developer, Joshua Nelson")
-	add_custom_command(TARGET c8 POST_BUILD COMMAND signtool sign /n ${SIGNSTR} /fd SHA256 /t http://timestamp.comodoca.com/authenticode  ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/c8.exe)
+	#add_custom_command(TARGET c8 POST_BUILD COMMAND signtool sign /n ${SIGNSTR} /fd SHA256 /t http://timestamp.comodoca.com/authenticode  ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/c8.exe)
 endif()
 target_link_libraries(c8 ${SDL2_LIB_ONLY} ${SDL2_TTF_LIBRARIES})
 

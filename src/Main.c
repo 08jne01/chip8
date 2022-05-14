@@ -9,6 +9,7 @@
 #include "SDL_FontCache/SDL_FontCache.h"
 
 #include "Chip8.h"
+#include "Diassemble.h"
 
 
 enum
@@ -66,6 +67,8 @@ static int keyNames[] = {
 	"V",
 };
 
+static bool setupFont( SDL_Renderer* renderer );
+static void readArgs( int argc, char** argv, int* instructionsPerFrame, char** filename );
 static void handleKeyPress( chip8_t* machine, SDL_Event* event );
 static void handleKeyPressDebug( chip8_t* machine, chip8_t* prevMachine, SDL_Event* event );
 static void drawScreen( SDL_Renderer* renderer, chip8_t* machine );
@@ -80,9 +83,11 @@ static void addBreakPoint( uint16_t point );
 static void deleteBreakPoint( uint16_t point );
 static inline bool shouldBreak( chip8_t* machine );
 static inline bool isBreakpoint( uint16_t );
-static void runCommand();
+static void runCommand( chip8_t* machine );
+static void changeMachine( chip8_t* machine, const char* reg, int value );
 
-
+/////////////////////////////////////////////////////
+//Debug variables
 static bool s_debug = false;
 static bool s_break = false;
 static bool s_input = false;
@@ -97,9 +102,11 @@ static uint16_t s_skipCall = 0;
 
 #define COMMAND_LEN 20
 #define COMMAND_HISTORY 8
-static int s_currentCommand = 0;
+static unsigned int s_currentCommand = 0;
 static char commandBuffer[COMMAND_HISTORY][20];
+/////////////////////////////////////////////////////
 
+//Swap main out for windows, so we don't produce a terminal.
 #ifdef IS_WINDOWS
 #include <Windows.h>
 
@@ -111,12 +118,22 @@ int WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, char* str, int nShowC
 }
 #endif
 
-int main(int argc, const char** argv)
-{
-	int clocks = 1;
-	int instructionsPerFrame = 6;
-	const char* filename = NULL;
 
+static bool setupFont( SDL_Renderer* renderer )
+{
+	s_fontTitle = FC_CreateFont();
+	s_fontText = FC_CreateFont();
+	bool success = true;
+	success &= FC_LoadFont( s_fontTitle, renderer, "novem__.ttf", 20, FC_MakeColor( 255, 255, 255, 255 ), TTF_STYLE_NORMAL );
+	success &= FC_LoadFont( s_fontText, renderer, "novem__.ttf", 15, FC_MakeColor( 255, 255, 255, 255 ), TTF_STYLE_NORMAL );
+
+	return success;
+}
+
+static void disassemble( const char* filename );
+
+void readArgs( int argc, char** argv, int* instructionsPerFrame, char** filename, bool* shouldDisassemble )
+{
 	for ( int i = 1; i < argc; i++ )
 	{
 		if ( strcmp( "--debug", argv[i] ) == 0 || strcmp( "-d", argv[i] ) == 0 )
@@ -135,20 +152,52 @@ int main(int argc, const char** argv)
 			if ( value )
 			{
 				value = strtok( NULL, buffer );
-				if ( value && ! sscanf( value, "%x", &instructionsPerFrame ) )
+				if ( value && ! sscanf( value, "%x", instructionsPerFrame ) )
 				{
-					instructionsPerFrame = 6;
+					*instructionsPerFrame = 6;
 				}
 			}
 		}
+		else if ( strcmp( "--help", argv[i] ) == 0 || strcmp( "-h", argv[i] ) == 0 )
+		{
+
+		}
+		else if ( strcmp( "--disassemble", argv[i] ) == 0 || strcmp( "-ds", argv[i] ) == 0 )
+		{
+			*shouldDisassemble = true;
+		}
 		else
 		{
-			if ( ! filename )
-				filename = argv[i];
+			if ( ! *filename )
+				*filename = argv[i];
 		}
 	}
+}
 
-	//filename = "tetris.rom";
+void disassemble( const char* filename )
+{
+	int len;
+	uint8_t* code = readCode( filename, &len );
+
+	char outFile[100];
+	strcpy( outFile, filename );
+	char* file = strtok( outFile, "." );
+	strcat( file, ".c8dasm" );
+
+	if ( code )
+	{
+		disassembleCode( code, len, file );
+	}
+}
+
+int main(int argc, const char** argv)
+{
+	int instructionsPerFrame = 6;
+	const char* filename = NULL;
+	bool shouldDisassemble = false;
+	readArgs( argc, argv, &instructionsPerFrame, &filename, &shouldDisassemble );
+
+	//filename = "unit_test.rom";
 
 	if ( ! filename )
 	{
@@ -156,21 +205,26 @@ int main(int argc, const char** argv)
 		return 1;
 	}
 
+	if ( shouldDisassemble )
+	{
+		disassemble( filename );
+		return 0;
+	}
+
 	int width = SCREEN_WIDTH;
 	int height = SCREEN_HEIGHT;
 
-	if ( s_debug )
-	{
-		width += DEBUG_WIDTH;
-		height += DEBUG_HEIGHT;
-	}
-
 
 	chip8_t* machine = createMachine();
-
 	chip8_t* prevMachine = NULL;
+
 	if ( s_debug )
 	{
+		//Add space for debug windows.
+		width += DEBUG_WIDTH;
+		height += DEBUG_HEIGHT;
+
+		//Create a copy of the machine in the last state.
 		prevMachine = createMachine();
 
 		//Initialise the command buffer to zero.
@@ -180,7 +234,12 @@ int main(int argc, const char** argv)
 		}
 	}
 
-	loadRom( machine, filename );
+	if ( ! loadRom( machine->memory + 0x200, filename ) )
+	{
+		destroyMachine( machine );
+		destroyMachine( prevMachine );
+		return 1;
+	}
 
 	SDL_Window* window = SDL_CreateWindow(
 		filename,
@@ -195,6 +254,7 @@ int main(int argc, const char** argv)
 	{
 		fprintf( stderr, "ERROR: Could not create window: %s\n", SDL_GetError() );
 		destroyMachine( machine );
+		destroyMachine( prevMachine );
 		return 1;
 	}
 
@@ -205,35 +265,24 @@ int main(int argc, const char** argv)
 		fprintf( stderr, "ERROR: Could not create renderer: %s\n", SDL_GetError() );
 		SDL_DestroyWindow( window );
 		destroyMachine( machine );
+		destroyMachine( prevMachine );
 		return 1;
 	}
 
 	if ( s_debug )
 	{
-		s_fontTitle = FC_CreateFont();
-		s_fontText = FC_CreateFont();
-		bool success = true;
-		success &= FC_LoadFont( s_fontTitle, renderer, "novem__.ttf", 20, FC_MakeColor( 255, 255, 255, 255 ), TTF_STYLE_NORMAL );
-		success &= FC_LoadFont( s_fontText, renderer, "novem__.ttf", 15, FC_MakeColor( 255, 255, 255, 255 ), TTF_STYLE_NORMAL );
-
-		if ( ! success )
+		if ( ! setupFont( renderer ) )
 		{
 			fprintf( stderr, "ERROR: Could not load font: %s\n", SDL_GetError() );
 			SDL_DestroyWindow( window );
 			SDL_DestroyRenderer( renderer );
 			destroyMachine( machine );
+			destroyMachine( prevMachine );
 			return 1;
 		}
 	}
 
-
-	int previousClock = clock();
-	int previousDrawClock = clock();
-
-	double drawClockTime = 1.0 / 60.0;
-	double clockTime = 1.0 / (double)clocks;
 	SDL_Event event;
-
 	bool running = true;
 	while ( running )
 	{
@@ -279,7 +328,6 @@ int main(int argc, const char** argv)
 				doOneClock( machine );
 
 			drawScreen( renderer, machine );
-			previousDrawClock = clock();
 		}
 			
 		
@@ -372,7 +420,7 @@ void handleKeyPressDebug( chip8_t* machine, chip8_t* prevMachine, SDL_Event* eve
 			s_input = ! s_input;
 			break;
 		case SDLK_RETURN:
-			runCommand();
+			runCommand( machine );
 			s_currentCommand = (s_currentCommand + 1) % COMMAND_HISTORY;
 			memset( commandBuffer[s_currentCommand], 0, COMMAND_LEN );
 			break;
@@ -413,7 +461,7 @@ void updateMemoryView( chip8_t* machine )
 	}
 }
 
-void runCommand()
+void runCommand( chip8_t* machine )
 {
 	char temp[100];
 	strcpy( temp, commandBuffer[s_currentCommand] );
@@ -423,9 +471,9 @@ void runCommand()
 	if ( ! command )
 		return;
 
-	if ( strcmp(command, "addbreak") == 0 )
+	if ( strcmp(command, "break") == 0 )
 	{
-		char* value = strtok( NULL, temp );
+		char* value = strtok( NULL, " " );
 		int address = 0;
 		if ( ! sscanf( value, "%x", &address ) )
 		{
@@ -434,9 +482,9 @@ void runCommand()
 
 		addBreakPoint( address );
 	}
-	else if ( strcmp( command, "delbreak" ) == 0 )
+	else if ( strcmp( command, "clear" ) == 0 )
 	{
-		char* value = strtok( NULL, temp );
+		char* value = strtok( NULL, " " );
 		int address = 0;
 		if ( ! sscanf( value, "%x", &address ) )
 		{
@@ -444,6 +492,51 @@ void runCommand()
 		}
 
 		deleteBreakPoint( address );
+	}
+	else if ( strcmp( command, "set" ) == 0 )
+	{
+		char* reg = strtok( NULL, " " );
+		char* valuestr = strtok( NULL, " " );
+
+		int value;
+		if ( ! sscanf( valuestr, "%x", &value ) )
+		{
+			return;
+		}
+
+		changeMachine( machine, reg, value );
+	}
+}
+
+void changeMachine( chip8_t* machine, const char* reg, int value )
+{
+	if ( strcmp( reg, "PC" ) == 0 )
+	{
+		machine->cpu.pc = value;
+	}
+	else if ( strcmp( reg, "PTR" ) == 0 )
+	{
+		machine->cpu.ptr = value;
+	}
+	else if ( strcmp( reg, "DLY" ) == 0 )
+	{
+		machine->cpu.dly = value;
+	}
+	else if ( strcmp( reg, "SP" ) == 0 )
+	{
+		machine->cpu.sp = value;
+	}
+	else if ( strcmp( reg, "SND" ) == 0 )
+	{
+		machine->cpu.snd = value;
+	}
+	else
+	{
+		int regIdx;
+		if ( sscanf( reg, "V%X", &regIdx ) && regIdx < 0x10 )
+		{
+			machine->cpu.reg[regIdx] = value;
+		}
 	}
 }
 
@@ -539,16 +632,17 @@ void drawDebugInfo( SDL_Renderer* renderer, chip8_t* machine, chip8_t* prevMachi
 	drawMachineCode( renderer, machine );
 	drawMemory( renderer, machine, prevMachine, machine->cpu.ptr );
 	
-	int j = s_currentCommand;
+	unsigned int j = s_currentCommand;
 	for ( int i = 0; i < COMMAND_HISTORY; i++ )
 	{
-		j = (j + 1) % COMMAND_HISTORY;
+		
 
 		const char* format = "  %s";
-		if ( s_currentCommand == j )
+		if ( i == 0 )
 			format = "> %s";
 
-		FC_Draw( s_fontText, renderer, 470, SCREEN_HEIGHT + 20 + 20 * (COMMAND_HISTORY + j - s_currentCommand), format, commandBuffer[j] );
+		FC_Draw( s_fontText, renderer, 470, SCREEN_HEIGHT + 20 + 20 * (COMMAND_HISTORY - i), format, commandBuffer[j] );
+		j = (j - 1) % COMMAND_HISTORY;
 	}
 
 	if ( s_input )

@@ -1,4 +1,5 @@
 #include "Chip8.h"
+#include "Chip8_Macros.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <memory.h>
@@ -11,13 +12,6 @@ static uint8_t s_subInstruction = 0;
 #define getBit(A, addr,k)		((A)[addr + (k/8)] & (1 << (k%8)))
 
 #define getBit8(A, addr, k)	(A[addr + (k/8)] & (1 << (k%8)))
-
-#define getOpcodeUpper(opcode) ((opcode & 0xF000) >> 12)
-#define getOpcodeX(opcode) ((opcode & 0x0F00u) >> 8u)
-#define getOpcodeY(opcode) ((opcode & 0x00F0u) >> 4u)
-#define getOpcodeN(opcode) (opcode & 0x000Fu)
-#define getOpcodeNN(opcode) (opcode & 0x00FFu)
-#define getOpcodeNNN(opcode) (opcode & 0x0FFFu)
 
 #define getX() getOpcodeX(s_opcode)
 #define getY() getOpcodeY(s_opcode)
@@ -59,7 +53,6 @@ uint8_t fontset[FONTSET_SET_SIZE] =
 
 
 typedef void (*INSTRUCTION)(chip8_t*);
-typedef void (*INSTRUCTION_TXT)(uint16_t opcode, char* str);
 
 
 static void OP0( chip8_t* machine );
@@ -79,31 +72,10 @@ static void OPD( chip8_t* machine );
 static void OPE( chip8_t* machine );
 static void OPF( chip8_t* machine );
 
-static void OP0_TXT( uint16_t opcode, char* str );
-static void OP1_TXT( uint16_t opcode, char* str );
-static void OP2_TXT( uint16_t opcode, char* str );
-static void OP3_TXT( uint16_t opcode, char* str );
-static void OP4_TXT( uint16_t opcode, char* str );
-static void OP5_TXT( uint16_t opcode, char* str );
-static void OP6_TXT( uint16_t opcode, char* str );
-static void OP7_TXT( uint16_t opcode, char* str );
-static void OP8_TXT( uint16_t opcode, char* str );
-static void OP9_TXT( uint16_t opcode, char* str );
-static void OPA_TXT( uint16_t opcode, char* str );
-static void OPB_TXT( uint16_t opcode, char* str );
-static void OPC_TXT( uint16_t opcode, char* str );
-static void OPD_TXT( uint16_t opcode, char* str );
-static void OPE_TXT( uint16_t opcode, char* str );
-static void OPF_TXT( uint16_t opcode, char* str );
 
 static INSTRUCTION s_instructions[16] = {
 	OP0,OP1,OP2,OP3,OP4,OP5,OP6,OP7,
 	OP8,OP9,OPA,OPB,OPC,OPD,OPE,OPF
-};
-
-static INSTRUCTION_TXT s_instructionsTXT[16] = {
-	OP0_TXT,OP1_TXT,OP2_TXT,OP3_TXT,OP4_TXT,OP5_TXT,OP6_TXT,OP7_TXT,
-	OP8_TXT,OP9_TXT,OPA_TXT,OPB_TXT,OPC_TXT,OPD_TXT,OPE_TXT,OPF_TXT
 };
 
 chip8_t* createMachine()
@@ -119,6 +91,7 @@ chip8_t* createMachine()
 		machine->cpu.ptr = 0;
 		machine->cpu.pc = CODE_START_LOCATION;
 		machine->cpu.sp = CALL_STACK_LOCATION;
+		memset( machine->memory, 0x0, 0x1000 );
 		memset( machine->memory + VIDEO_MEM_LOCATION, 0x0, 256 );
 		memset( machine->memory + KEY_LOCATION, 0x0, NUM_KEYS );
 		memcpy( machine->memory + FONTSET_LOCATION, fontset, FONTSET_SET_SIZE );
@@ -129,7 +102,7 @@ chip8_t* createMachine()
 	return machine;
 }
 
-void loadRom( chip8_t* machine, const char* filename )
+uint8_t* readCode( const char* filename, int* len )
 {
 	FILE* file;
 	file = fopen( filename, "rb" );
@@ -137,7 +110,7 @@ void loadRom( chip8_t* machine, const char* filename )
 	if ( ! file )
 	{
 		fprintf( stderr, "ERROR: Could not open file.\n" );
-		exit( 1 );
+		return NULL;
 	}
 
 	unsigned char* buffer = malloc( 0x800 );
@@ -146,15 +119,29 @@ void loadRom( chip8_t* machine, const char* filename )
 	{
 		fprintf( stderr, "ERROR: Could not create buffer.\n" );
 		fclose( file );
-		free( buffer );
-		return;
+		return buffer;
 	}
 
-	int len = fread( buffer, 1, 0x800, file );
-	memcpy( machine->memory + 0x200, buffer, len );
-
-	free( buffer );
+	*len = fread( buffer, 1, 0x800, file );
 	fclose( file );
+
+	return buffer;
+}
+
+bool loadRom( uint8_t* memory, const char* filename )
+{
+	int len;
+
+	uint8_t* code = readCode( filename, &len );
+
+	if ( code )
+	{
+		memcpy( memory, code, len );
+		free( code );
+		return true;
+	}
+
+	return false;
 }
 
 bool peekCall( chip8_t* machine )
@@ -191,7 +178,7 @@ void doOneClockDebug( chip8_t* machine, chip8_t* prevMachine )
 	doOneClock( machine );
 }
 
-void doOneInstructionDebug( chip8_t* machine, chip8_t* prevMachine, bool stepIn )
+void doOneInstructionDebug( chip8_t* machine, chip8_t* prevMachine )
 {
 	memcpy( prevMachine, machine, sizeof( chip8_t ) );
 
@@ -428,180 +415,3 @@ void OPF( chip8_t* machine )
 }
 
 
-void disassembleInstruction( uint16_t opcode, char* str )
-{
-	int index = getOpcodeUpper( opcode );
-	if ( index >= 0 && index < sizeof( s_instructions ) / sizeof( INSTRUCTION_TXT ) )
-	{
-		s_instructionsTXT[index]( opcode, str );
-	}
-	else
-	{
-		sprintf( str, "???" );
-	}
-}
-
-void OP0_TXT( uint16_t opcode, char* str )
-{
-	if ( getOpcodeN(opcode) == 0 )
-	{
-		sprintf( str, "CLR" );
-	}
-	else if ( getOpcodeN(opcode) == 0xE )
-	{
-		sprintf( str, "RET" );
-	}
-	else
-	{
-		sprintf( str, "???" );
-	}
-}
-
-void OP1_TXT( uint16_t opcode, char* str )
-{
-	sprintf( str, "JMP  0x%03X", getOpcodeNNN(opcode) );
-}
-
-void OP2_TXT( uint16_t opcode, char* str )
-{
-	sprintf( str, "CALL 0x%03X", getOpcodeNNN( opcode ) );
-}
-
-void OP3_TXT( uint16_t opcode, char* str )
-{
-	sprintf( str, "SE   V%01X, 0x%02X", getOpcodeX( opcode ), getOpcodeNN( opcode ) );
-}
-
-void OP4_TXT( uint16_t opcode, char* str )
-{
-	sprintf( str, "SNE  V%01X, 0x%02X", getOpcodeX( opcode ), getOpcodeNN( opcode ) );
-}
-
-void OP5_TXT( uint16_t opcode, char* str )
-{
-	sprintf( str, "SE  V%01X, V%01X", getOpcodeX( opcode ), getOpcodeY( opcode ) );
-}
-
-void OP6_TXT( uint16_t opcode, char* str )
-{
-	sprintf( str, "MOV  V%01X, 0x%02X", getOpcodeX( opcode ), getOpcodeNN( opcode ) );
-}
-
-void OP7_TXT( uint16_t opcode, char* str )
-{
-	sprintf( str, "ADD  V%01X, 0x%02X", getOpcodeX( opcode ), getOpcodeNN( opcode ) );
-}
-
-void OP8_TXT( uint16_t opcode, char* str )
-{
-	switch ( getOpcodeN( opcode ) )
-	{
-	case 0x0:
-		sprintf( str, "MOV  V%01X, V%01X", getOpcodeX( opcode ), getOpcodeY( opcode ) );
-		return;
-	case 0x1:
-		sprintf( str, "OR   V%01X, V%01X", getOpcodeX( opcode ), getOpcodeY( opcode ) );
-		return;
-	case 0x2:
-		sprintf( str, "AND  V%01X, V%01X", getOpcodeX( opcode ), getOpcodeY( opcode ) );
-		return;
-	case 0x3:
-		sprintf( str, "XOR  V%01X, V%01X", getOpcodeX( opcode ), getOpcodeY( opcode ) );
-		return;
-	case 0x4:
-		sprintf( str, "ADD  V%01X, V%01X", getOpcodeX( opcode ), getOpcodeY( opcode ) );
-		return;
-	case 0x5:
-		sprintf( str, "SUB  V%01X, V%01X", getOpcodeX( opcode ), getOpcodeY( opcode ) );
-		return;
-	case 0x6:
-		sprintf( str, "SHR  V%01X", getOpcodeX( opcode ) );
-		return;
-	case 0x7:
-		sprintf( str, "SUBO V%01X, V%01X", getOpcodeX( opcode ), getOpcodeY( opcode ) );
-		return;
-	case 0xE:
-		sprintf( str, "SHL  V%01X", getOpcodeX( opcode ) );
-		return;
-	default:
-		sprintf( str, "???");
-	}
-}
-
-void OP9_TXT( uint16_t opcode, char* str )
-{
-	sprintf( str, "SNE  V%01X, V%01X", getOpcodeX( opcode ), getOpcodeY( opcode ) );
-}
-
-void OPA_TXT( uint16_t opcode, char* str )
-{
-	sprintf( str, "MOV  PTR, 0x%03X", getOpcodeNNN( opcode ) );
-}
-
-void OPB_TXT( uint16_t opcode, char* str )
-{
-	sprintf( str, "MJMP V%01X", getOpcodeX( opcode ) );
-}
-
-void OPC_TXT( uint16_t opcode, char* str )
-{
-	sprintf( str, "RND  V%01X, 0x%02X", getOpcodeX( opcode ), getOpcodeNN(opcode) );
-}
-
-void OPD_TXT( uint16_t opcode, char* str )
-{
-	sprintf( str, "DRAW V%01X, V%01X, 0x%01X", getOpcodeX( opcode ), getOpcodeY( opcode ), getOpcodeN(opcode) );
-}
-
-void OPE_TXT( uint16_t opcode, char* str )
-{
-	if ( getOpcodeN(opcode) == 0xE )
-	{
-		sprintf( str, "SK   V%01X", getOpcodeX(opcode) );
-	}
-	else if ( getOpcodeN(opcode) == 0x1 )
-	{
-		sprintf( str, "SNK  V%01X", getOpcodeX( opcode ) );
-	}
-	else
-	{
-		sprintf( str, "???" );
-	}
-}
-
-void OPF_TXT( uint16_t opcode, char* str )
-{
-	switch ( getOpcodeNN(opcode) )
-	{
-	case 0x07:
-		sprintf( str, "MOV  V%01X, DLY", getOpcodeX( opcode ) );
-		return;
-	case 0x0A:
-		sprintf( str, "WTK  V%01X", getOpcodeX( opcode ) );
-		return;
-	case 0x15:
-		sprintf( str, "MOV  DLY, V%01X", getOpcodeX( opcode ) );
-		return;
-	case 0x18:
-		sprintf( str, "MOV  SND, V%01X", getOpcodeX( opcode ) );
-		return;
-	case 0x1E:
-		sprintf( str, "ADD  PTR, V%01X", getOpcodeX( opcode ) );
-		return;
-	case 0x29:
-		sprintf( str, "SPT  V%01X", getOpcodeX( opcode ) );
-		return;
-	case 0x33:
-		sprintf( str, "BCD  V%01X", getOpcodeX( opcode ) );
-		return;
-	case 0x55:
-		sprintf( str, "DUMP V%01X", getOpcodeX( opcode ) );
-		return;
-	case 0x65:
-		sprintf( str, "LOAD V%01X", getOpcodeX( opcode ) );
-		return;
-	default:
-		sprintf( str, "???" );
-	}
-	
-}

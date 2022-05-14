@@ -21,13 +21,18 @@ typedef struct chip8_s
 	uint8_t memory[0x1000];
 } chip8_t;
 
-static inline uint16_t getOpcode( chip8_t* machine, uint16_t address )
+static inline uint16_t getOpcodeRawAddress( uint8_t* memory, uint16_t address )
 {
 	uint16_t lower;
 	uint16_t upper;
-	upper = machine->memory[address];
-	lower = machine->memory[address + 1];
+	upper = memory[address];
+	lower = memory[address + 1];
 	return (upper << 8) | lower;
+}
+
+static inline uint16_t getOpcode( chip8_t* machine, uint16_t address )
+{
+	return getOpcodeRawAddress( machine->memory, address );
 }
 
 
@@ -36,11 +41,11 @@ static inline uint16_t getOpcode( chip8_t* machine, uint16_t address )
 
 extern chip8_t* createMachine();
 extern bool peekCall( chip8_t* machine );
-extern void disassembleInstruction( uint16_t opcode, char* str );
 extern void doOneClock( chip8_t* machine );
 extern void doOneInstructionDebug( chip8_t* machine, chip8_t* prevMachine );
 extern void doOneClockDebug( chip8_t* machine, chip8_t* prevMachine );
-extern void loadRom(chip8_t* machine, const char* filename);
+extern uint8_t* readCode( const char* filename, int* len );
+extern bool loadRom(uint8_t* memory, const char* filename);
 extern void destroyMachine(chip8_t* machine);
 
 #endif
